@@ -1,3 +1,5 @@
+<img src="docs/sweetgtv/logo.png" alt="SweetGtv logo" width="420">
+
 # SweetGtv
 
 SweetGtv brings your shows, music, and favorite apps together on Google TV. Pick up an episode, find a YouTube video, or press **↑** for Spotify. Everything is designed for the remote you already use.
