@@ -1,3 +1,58 @@
+# SweetGtv
+
+SweetGtv brings your shows, music, and favorite apps together on Google TV. Pick up an episode, find a YouTube video, or press **↑** for Spotify. Everything is designed for the remote you already use.
+
+![SweetGtv Home with the Continue Watching row, progress bars, and favorite streaming apps](docs/sweetgtv/home.jpg)
+
+## Pick up where you left off
+
+**Continue Watching** sits at the top of Home, ready when you are. Pick a show to jump back in. A short, rounded progress bar stays readable over bright cover art and gives even a barely started episode a visible mark. The row shows what your apps share with the TV.
+
+## Spotify is one press away
+
+Press **↑** at the top of Home or pick the music note to open the Spotify panel right over Home. Play or pause, skip tracks, and see the cover and playback time. The artist and track also appear beside the music note on Home while Spotify is playing.
+
+![Spotify panel over Home with current playback, album art, and the Recent grid](docs/sweetgtv/spotify.jpg)
+
+- **Recent, Playlists, and Resume** give you quick access to recently played tracks, your playlists, and unfinished saved podcast episodes. Open a section when you want to browse and select it again for the compact player.
+- **Jump to a moment** by moving left or right on the progress bar. Press **OK** when you find the right spot. The music keeps playing while you look.
+- **Play on** moves your Spotify session to an available device. Start on the TV and take it to a speaker or tablet that Spotify can see.
+
+The panel keeps your place while lists refresh, and new covers fade in as they load. Spotify playback requires a connected Spotify Premium account. [Spotify playback requirements](https://developer.spotify.com/documentation/web-api/reference/start-a-users-playback)
+
+![Spotify Play on picker with the active TV highlighted and custom device names obscured](docs/sweetgtv/play-on.jpg)
+
+## Browse YouTube from Home
+
+Scroll past your apps for a row of YouTube picks. See the channel, when a video was posted, its length, and the view count when YouTube shares them. A **LIVE** badge tells you when a video is on now.
+
+![YouTube row with video lengths, channel names, upload ages, and view counts](docs/sweetgtv/youtube.jpg)
+
+## Put your favorite apps up front
+
+The rows scroll together while the header stays in place. Keep the apps you reach for most on Home and open **All apps** for the rest. Hold **OK** in the library to add a shortcut. On a Home tile, hold **OK** to move or remove its shortcut.
+
+![Full-screen All apps library under the fixed SweetGtv header](docs/sweetgtv/all-apps.jpg)
+
+## A few handy controls
+
+Press **Left** at the edge of a Home row or choose the speaker icon to open volume controls. The top bar gives you quick access to Settings, Bluetooth accessories, Wi-Fi, your screensaver, and the original Google TV Home.
+
+![SweetGtv volume drawer open on the left with volume up and down controls](docs/sweetgtv/volume.jpg)
+
+## Built on CleanYourTV
+
+- **What we kept.** CleanYourTV’s app grid, clock and greeting, wallpapers, themes, and app library are the foundation.
+- **What we carried into the new screens.** The dark backdrop, rounded tiles, ambient color, and bright focus highlight make the new rows feel at home alongside the original app grid.
+- **What we added.** Continue Watching with progress at a glance, a YouTube row, the Spotify player, volume controls, and more shortcuts in the header. The app library now has a full page and Home scrolls as one screen.
+
+Thanks to Gathin and the CleanYourTV contributors. SweetGtv is an MIT-licensed fork, tested on Chromecast with Google TV 4K. [CleanYourTV](https://github.com/Gathin23/cleanyourtv) · [MIT License](LICENSE)
+
+[Get SweetGtv running](companions/README.md)
+
+<details>
+<summary>Original CleanYourTV project guide</summary>
+
 <p align="center">
   <a href="https://cleanyour.tv"><img src="https://raw.githubusercontent.com/Gathin23/cleanyourtv/main/docs/banner.png" alt="CleanYourTV. Your TV, minus the ads. Strip the bloatware from any Android TV or Google TV over Wi-Fi and replace the ad-filled home screen with a clean launcher that looks like an Apple TV. No root, no cable, nothing uninstalled, and a one-line restore." width="800"></a>
 </p>
@@ -1070,3 +1125,5 @@ The people whose work is in this repo:
 
 MIT, see [`LICENSE`](LICENSE). The Outfit typeface is under the SIL Open Font License, see
 `launcher/FONT-LICENSE-OFL.txt`.
+
+</details>
