@@ -49,4 +49,26 @@ final class SystemSettings {
         Intent info = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + pkg));
         return context.getPackageManager().resolveActivity(info, PackageManager.MATCH_DEFAULT_ONLY) != null ? info : null;
     }
+
+    /** Use the platform's accessory page; Bluetooth pairing and audio changes stay in system UI. */
+    static Intent bluetoothIntent(Context context) {
+        PackageManager pm = context.getPackageManager();
+        Intent standard = new Intent(Settings.ACTION_BLUETOOTH_SETTINGS);
+        if (usable(context, standard)) return standard;
+        // The user may explicitly authorize the already-declared permission for this native page.
+        // Without it, ordinary Settings remains available and no permission is requested here.
+        Intent accessories = new Intent("android.settings.SLICE_SETTINGS")
+                .setPackage("com.android.tv.settings")
+                .putExtra("slice_uri", "content://com.android.tv.settings.accessories.sliceprovider/general");
+        if (pm.resolveContentProvider("com.android.tv.settings.accessories.sliceprovider", 0) != null
+                && usable(context, accessories)) return accessories;
+        return intent(context, Settings.ACTION_SETTINGS);
+    }
+
+    private static boolean usable(Context context, Intent intent) {
+        ResolveInfo info = context.getPackageManager().resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY);
+        if (info == null || !info.activityInfo.exported || !info.activityInfo.enabled) return false;
+        String permission = info.activityInfo.permission;
+        return permission == null || context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED;
+    }
 }

@@ -1,4 +1,4 @@
-"""Every key the launcher reads from config.xml has a row in the Keys table in themes/README.md.
+"""Every key the launcher reads from config.xml is documented in the theme or personal Home guide.
 
 The switch recipe in AGENTS.md asks for a row in that table for every key it adds, because the table
 is what a theme author reads and the launcher itself says nothing: an unknown key is ignored, so a
@@ -29,6 +29,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "themes" / "README.md"
+PERSONAL_README = ROOT / "companions" / "README.md"
 CONFIG_XML = ROOT / "launcher" / "app" / "src" / "main" / "res" / "values" / "config.xml"
 MANIFEST = ROOT / "launcher" / "app" / "src" / "main" / "AndroidManifest.xml"
 JAVA_DIR = ROOT / "launcher" / "app" / "src" / "main" / "java" / "com" / "gathin" / "tvhome"
@@ -107,11 +108,11 @@ def read_from_config(config, java_sources):
     return {name for name in names if name in config}
 
 
-def missing_rows(table_text, config_text, java_sources):
-    """The config.xml keys the launcher reads that no row of the Keys table names, EXEMPT aside."""
+def missing_rows(table_text, config_text, java_sources, personal_keys=()):
+    """The config.xml keys absent from both guides, excluding the documented exceptions."""
     read = read_from_config(config_keys(config_text), java_sources)
-    rows = table_keys(table_text)
-    return sorted(name for name in read if name not in rows and name not in EXEMPT)
+    documented = set(table_keys(table_text)).union(personal_keys)
+    return sorted(read - documented - EXEMPT.keys())
 
 
 def row_for(table_text, key):
@@ -152,12 +153,13 @@ class KeysTableCoversConfigXmlTest(unittest.TestCase):
         self.assertGreaterEqual(len(read), 40, "far fewer keys read from config.xml than before")
 
     def test_every_key_the_launcher_reads_has_a_row(self):
-        missing = missing_rows(self.text, self.config, self.sources)
+        personal_keys = re.findall(r"(?m)^- `([a-z][a-z0-9_]*)` \S", PERSONAL_README.read_text(encoding="utf-8"))
+        missing = missing_rows(self.text, self.config, self.sources, personal_keys)
         for name in missing:
             with self.subTest(key=name):
-                self.fail(f"the launcher reads `{name}` from config.xml and the Keys table has no row "
-                          f"for it: add one (docs/workflows/launcher-switch.md) or, if it is not a key a "
-                          f"reader sets, add it to EXEMPT with the page that documents it instead")
+                self.fail(f"the launcher reads `{name}` from config.xml and neither guide documents it. "
+                          f"See docs/workflows/launcher-switch.md for theme keys and companions/README.md "
+                          f"for personal Home options.")
 
     def test_settings_fallback_components_has_its_row(self):
         row = row_for(self.text, "settings_fallback_components")

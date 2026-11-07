@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Continue Watching</string>
+    <string name="heading">Continue Watching</string>
+    <string name="loading">Finding episodes shared by your apps…</string>
+    <string name="refresh">Refresh</string>
+    <string name="back">Back</string>
+    <string name="empty_title">No shared episodes yet</string>
+    <string name="empty_body">Shows appear here when their apps share playback progress with Android TV. Your viewing history stays in each app. Start an episode in an app, then return here.</string>
+    <plurals name="available_count">
+        <item quantity="one">%1$d title available</item>
+        <item quantity="other">%1$d titles available</item>
+    </plurals>
+    <string name="list_status">%1$s · %2$s</string>
+    <string name="inside_apps">In your apps</string>
+    <string name="limited">Some apps do not share their shows with Android TV.</string>
+    <string name="permission_title">Allow access to TV listings</string>
+    <string name="permission_body">Continue Watching reads programs your apps share with Android TV. Public artwork is downloaded on demand. Your accounts and viewing history stay in their apps.</string>
+    <string name="opening">Opening episode…</string>
+    <string name="entry_unavailable">This episode is no longer available. Return to Home to refresh.</string>
+    <string name="permission_button">Allow</string>
+    <string name="provider_error">Unable to load your shows right now. Try Refresh.</string>
+    <string name="source_opened">Direct playback unavailable. App opened instead.</string>
+    <string name="source_unavailable">This app is no longer available.</string>
+    <string name="season_episode">S%1$s · E%2$s</string>
+    <string name="episode_only">Episode %1$s</string>
+    <string name="progress">%1$d min of %2$d min</string>
+    <string name="next_episode">Next episode</string>
+    <string name="new_episode">New episode</string>
+    <string name="resume">Resume</string>
+</resources>

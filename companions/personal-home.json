@@ -1,0 +1,52 @@
+{
+  "columns": 4,
+  "dock_apps": [
+    "com.netflix.ninja",
+    "com.amazon.amazonvideo.livingroom",
+    "com.google.android.youtube.tv",
+    "com.apple.atve.androidtv.appletv"
+  ],
+  "fill_dock": false,
+  "hidden_apps": [
+    "com.david.tvcontinue"
+  ],
+  "library_apps": [
+    "com.netflix.ninja",
+    "com.amazon.amazonvideo.livingroom",
+    "com.google.android.youtube.tv",
+    "com.apple.atve.androidtv.appletv",
+    "com.peacocktv.peacockandroid",
+    "com.spotify.tv.android",
+    "com.disney.disneyplus",
+    "com.stremio.one"
+  ],
+  "app_library": true,
+  "selected_apps_only": true,
+  "library_button": true,
+  "show_library_pill": false,
+  "library_ok_opens": true,
+  "app_library_selection": false,
+  "tile_menu": true,
+  "live_tv_package": "",
+  "stock_home_redirect": "com.google.android.apps.tv.launcherx",
+  "key_filter": false,
+  "restore_key_services": false,
+  "home_idle_clock_minutes": 0,
+  "top_bar_apps": [
+    "com.daviddemri.tv.screensaver"
+  ],
+  "home_continue_row": true,
+  "dock_title": false,
+  "rows_below_dock": 0,
+  "personal_icon_bar": true,
+  "icon_only_buttons": true,
+  "wifi_label_width": 0,
+  "fluid_home": true,
+  "dock_row": false,
+  "dock_band": false,
+  "always_show_names": true,
+  "volume_drawer": true,
+  "hide_home_app_names": true,
+  "home_youtube_row": true,
+  "spotify_drawer": true
+}

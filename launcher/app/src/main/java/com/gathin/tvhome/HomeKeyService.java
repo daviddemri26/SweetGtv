@@ -2,6 +2,7 @@ package com.gathin.tvhome;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.AccessibilityServiceInfo;
+import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
@@ -22,6 +23,8 @@ import android.view.KeyEvent;
 import android.view.ViewConfiguration;
 import android.view.accessibility.AccessibilityEvent;
 import android.widget.Toast;
+
+import androidx.annotation.RequiresApi;
 
 import java.util.Collections;
 import java.util.HashSet;
@@ -71,6 +74,10 @@ public class HomeKeyService extends AccessibilityService {
     private final Set<String> stockHome = new HashSet<>();
     /** stock_home_redirect, the stock launcher's package. */
     private String stockHomePackage = "";
+    /** A deliberate visit, scoped to this service binding; the normal Home redirect remains enabled. */
+    private final StockHomeVisit stockVisit = new StockHomeVisit();
+    private BroadcastReceiver stockVisitReceiver;
+    private long stockVisitStartedUptime;
     /** power_on_home: the Live TV package to send back to Home, empty when off; armed until this uptime or a key. */
     private String powerOnLiveTv = "";
     private long powerOnUntil;
@@ -138,6 +145,7 @@ public class HomeKeyService extends AccessibilityService {
     @Override
     public void onDestroy() {
         if (running == this) running = null;
+        endStockVisit();
         stopWaitingForUnlock();
         if (screenOnReceiver != null) unregisterReceiver(screenOnReceiver);
         if (standbyExit != null) {
@@ -182,6 +190,7 @@ public class HomeKeyService extends AccessibilityService {
     }
 
     private void loadConfig() {
+        endStockVisit();
         // Keycodes and the panel choice can also come from a theme; theme.sh restarts this service.
         Config config = Config.load(this);
         // restore_key_services: note that this helper runs, so Home can put it back after a force stop. Here, not
@@ -294,6 +303,7 @@ public class HomeKeyService extends AccessibilityService {
     /** Unbound by Android: the user turned the helper off, so Home doesn't put it back (ServiceRepair). */
     @Override
     public boolean onUnbind(Intent intent) {
+        endStockVisit();
         if (repairRecord && !steppingOut) ServiceRepair.disconnected(this, getClass());
         return super.onUnbind(intent);
     }
@@ -319,7 +329,108 @@ public class HomeKeyService extends AccessibilityService {
         }
         // stock_home_redirect: the firmware turned the stock launcher back on and its home screen came up.
         CharSequence cls = event.getClassName();
-        if (!stockHome.isEmpty() && cls != null && stockHome.contains(cls.toString())) openHome();
+        boolean stockWindow = !stockHome.isEmpty() && cls != null && stockHome.contains(cls.toString());
+        // Native Home can remain the same window through standby. A direct wake into another app wins.
+        if (stockVisit.isWaitingForWake()) {
+            String pkg = event.getPackageName() == null ? null : event.getPackageName().toString();
+            PowerManager power = getSystemService(PowerManager.class);
+            if (power != null && power.isInteractive() && pkg != null
+                    && !stockHomePackage.equals(pkg) && !"com.android.systemui".equals(pkg)
+                    && isActivityWindow(pkg, cls)) endStockVisit();
+            return;
+        }
+        boolean visiting = false;
+        if (stockVisit.isActive()) {
+            // Accessibility can deliver an old window event after the explicit button was pressed.
+            if (event.getEventTime() < stockVisitStartedUptime) return;
+            String pkg = event.getPackageName() == null ? null : event.getPackageName().toString();
+            boolean activityWindow = isActivityWindow(pkg, cls);
+            visiting = stockVisit.observeWindow(pkg, activityWindow, stockWindow, SystemClock.elapsedRealtime());
+            if (!stockVisit.isActive()) endStockVisit();
+        }
+        if (stockWindow && !visiting) openHome();
+    }
+
+    private boolean isActivityWindow(String pkg, CharSequence cls) {
+        if (pkg == null || cls == null) return false;
+        try {
+            getPackageManager().getActivityInfo(new ComponentName(pkg, cls.toString()), 0);
+            return true;
+        } catch (PackageManager.NameNotFoundException | SecurityException notAnActivity) {
+            return false; // Toasts, keyboards and transient panels do not end the visit.
+        }
+    }
+
+    /** Open the configured, enabled native Home for one visit without changing Android's Home or key filtering. */
+    static boolean openStockHome(Activity caller) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false;
+        HomeKeyService service = running;
+        if (service == null || service.stockHomePackage.isEmpty() || !service.stockHomeStays()) return false;
+        Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+                .setPackage(service.stockHomePackage);
+        ResolveInfo target = caller.getPackageManager().resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY);
+        if (target == null || target.activityInfo == null || !target.activityInfo.exported
+                || !target.activityInfo.enabled || !target.activityInfo.applicationInfo.enabled
+                || !service.stockHomePackage.equals(target.activityInfo.packageName)
+                || !service.stockHome.contains(target.activityInfo.name)
+                || target.activityInfo.permission != null && caller.checkSelfPermission(target.activityInfo.permission)
+                != PackageManager.PERMISSION_GRANTED) return false;
+        home.setComponent(new ComponentName(target.activityInfo.packageName, target.activityInfo.name))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+        try {
+            service.beginStockVisit(caller.getPackageName());
+            caller.startActivity(home);
+            return true;
+        } catch (RuntimeException unavailable) {
+            service.endStockVisit();
+            return false;
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private void beginStockVisit(String origin) {
+        endStockVisit();
+        stockVisitStartedUptime = SystemClock.uptimeMillis();
+        stockVisit.begin(stockHomePackage, origin, SystemClock.elapsedRealtime());
+        stockVisitReceiver = new BroadcastReceiver() {
+            @Override public void onReceive(Context context, Intent intent) {
+                if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) {
+                    handler.removeCallbacks(stockVisitWakeHome);
+                    if (stockVisit.isActive()) {
+                        handler.removeCallbacks(stockVisitReturnHome);
+                        stockVisit.waitForWake();
+                    }
+                    return;
+                }
+                if (Intent.ACTION_SCREEN_ON.equals(intent.getAction()) && stockVisit.isWaitingForWake()) {
+                    // Keep the one-shot receiver until recovery actually runs, including a quick second sleep.
+                    handler.removeCallbacks(stockVisitWakeHome);
+                    handler.postDelayed(stockVisitWakeHome, POWER_ON_ALWAYS_DELAY_MS);
+                    return;
+                }
+                if (!stockVisit.isActive()) return;
+                if (Intent.ACTION_CLOSE_SYSTEM_DIALOGS.equals(intent.getAction())
+                        && "homekey".equals(intent.getStringExtra("reason"))) {
+                    // The system emits this before opening native Home, including with key_filter=false.
+                    endStockVisit();
+                    handler.postDelayed(stockVisitReturnHome, HOME_KEY_DELAY_MS);
+                }
+            }
+        };
+        IntentFilter filter = new IntentFilter(Intent.ACTION_CLOSE_SYSTEM_DIALOGS);
+        filter.addAction(Intent.ACTION_SCREEN_OFF);
+        filter.addAction(Intent.ACTION_SCREEN_ON);
+        registerReceiver(stockVisitReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+    }
+
+    private void endStockVisit() {
+        stockVisit.clear();
+        handler.removeCallbacks(stockVisitReturnHome);
+        handler.removeCallbacks(stockVisitWakeHome);
+        if (stockVisitReceiver == null) return;
+        try { unregisterReceiver(stockVisitReceiver); }
+        catch (IllegalArgumentException notRegistered) { /* Launch/registration failed before binding. */ }
+        stockVisitReceiver = null;
     }
 
     /** How long power_on_home stays armed after the screen turns on without a reboot. */
@@ -395,6 +506,11 @@ public class HomeKeyService extends AccessibilityService {
     /** Lets the system see the key, so a long press still does what the firmware gives it. */
     private static final long HOME_KEY_DELAY_MS = 250;
     private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable stockVisitReturnHome = this::openHome;
+    private final Runnable stockVisitWakeHome = () -> {
+        PowerManager power = getSystemService(PowerManager.class);
+        if (stockVisit.isWaitingForWake() && power != null && power.isInteractive()) openHome();
+    };
 
     /** stock_home_redirect on the Home key: when the stock home is already on screen (it came up at boot, before
      *  Android bound this service), Home brings it up again with no window change, so the redirect above never
@@ -404,7 +520,7 @@ public class HomeKeyService extends AccessibilityService {
     private void redirectHomeKey(KeyEvent event) {
         if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()
                 && isShortPress(event.getDownTime(), event.getEventTime(), ViewConfiguration.getLongPressTimeout())) {
-            handler.postDelayed(this::openHome, HOME_KEY_DELAY_MS);
+            handler.postDelayed(stockVisitReturnHome, HOME_KEY_DELAY_MS);
         }
     }
 
@@ -413,6 +529,7 @@ public class HomeKeyService extends AccessibilityService {
     }
 
     private void openHome() {
+        endStockVisit();
         Intent open = stockHomeStays() ? new Intent(this, MainActivity.class)
                 : new Intent(Intent.ACTION_MAIN).setPackage(getPackageName());
         startActivity(open.addCategory(Intent.CATEGORY_HOME)

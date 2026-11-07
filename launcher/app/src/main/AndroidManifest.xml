@@ -9,6 +9,8 @@
 
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Optional local title stream from the personal Spotify companion, signed with this Home. -->
+    <uses-permission android:name="com.daviddemri.tv.spotify.permission.READ_PLAYBACK_TITLE" />
     <!-- Needed since Android 10 to read the Wi-Fi network name for the network pill. Never requested at
          runtime: build-and-install grants it with pm grant, so lint's Android 12 "ask for COARSE with
          FINE" rule does not apply here. -->
@@ -25,12 +27,21 @@
     <!-- Android 11+ package visibility: lets the launcher list the TV apps it shows as tiles, and the
          apps that declare a module card (docs/specs/card.md). -->
     <queries>
+        <!-- Personal music panel companion, enabled only by the theme's spotify_drawer. -->
+        <package android:name="com.daviddemri.tv.spotify" />
+        <provider android:authorities="com.david.tvcontinue.home" />
         <!-- The standard settings handlers, so package visibility doesn't hide them and send the pills to a vendor fallback by mistake. -->
         <intent>
             <action android:name="android.settings.SETTINGS" />
         </intent>
         <intent>
             <action android:name="android.settings.WIFI_SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.BLUETOOTH_SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.SLICE_SETTINGS" />
         </intent>
         <intent>
             <action android:name="android.settings.DISPLAY_SETTINGS" />

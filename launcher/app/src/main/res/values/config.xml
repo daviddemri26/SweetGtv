@@ -292,6 +292,16 @@
     <!-- Wi-Fi and Settings as round icon-only buttons (the network name moves to the talkback description);
          Inputs keeps its label. -->
     <bool name="icon_only_buttons">false</bool>
+    <!-- Personal opt-in: order Settings, All apps, Screensaver, Wi-Fi from left to right and use a
+         monochrome icon for com.daviddemri.tv.screensaver. Pair with icon_only_buttons and wifi_label_width=0. -->
+    <!-- Also includes a Bluetooth accessory shortcut with a read-only media-route caption. -->
+    <bool name="personal_icon_bar">false</bool>
+    <!-- Opt-in personal UI: all Home rows scroll together; All apps replaces the content under the header. -->
+    <bool name="fluid_home">false</bool>
+    <!-- Theme opt-in: Left from a content row edge reveals media volume +/-. -->
+    <bool name="volume_drawer">false</bool>
+    <!-- Theme opt-in: Up from the header opens the personal Spotify widget companion. -->
+    <bool name="spotify_drawer">false</bool>
     <!-- The Inputs pill as a round icon button too (the label moves to the talkback description). -->
     <bool name="icon_only_inputs">false</bool>
     <!-- true colours the Wi-Fi pill's icon green while the TV is online and leaves it white while it is not (dark on
@@ -331,6 +341,8 @@
     <!-- Names under every tile, not only the focused one: unfocused names stay dimmed, the focused one is full white.
          With dock_row the band grows down to hold the dock's names too. -->
     <bool name="always_show_names">false</bool>
+    <!-- Hide names below Home app tiles, including the focused tile. All apps and Continue keep theirs. -->
+    <bool name="hide_home_app_names">false</bool>
     <!-- Wallpapers decode as RGB_565 (2 bytes a pixel, 4 MB at 1080p), which bands dark gradients such as a night
          sky, most of all under wallpaper_dim. true decodes them in 32-bit colour: 8 MB, for TVs with 2 GB or more. -->
     <bool name="wallpaper_true_color">false</bool>
@@ -372,6 +384,15 @@
 
     <!-- Installed launchable apps, including ordinary Android apps. Also settable in config.json. -->
     <bool name="app_library">false</bool>
+    <!-- Only dock_apps, library_apps and apps explicitly added from the library appear on Home.
+         New installs stay in the library until added; Remove from Home still wins over these defaults.
+         Keep app_library on so every installed app remains reachable. Off by default; a theme can set
+         "selected_apps_only": true. This changes shortcuts only, never installed apps or their data. -->
+    <bool name="selected_apps_only">false</bool>
+    <!-- Personal local provider integration. No network or TV-listings permission in Home. -->
+    <bool name="home_continue_row">false</bool>
+    <!-- A separate YouTube content shelf after Home apps; requires fluid_home and the local companion. -->
+    <bool name="home_youtube_row">false</bool>
     <!-- Every app tile is its icon on a card tinted from that icon, name only under the focused tile,
          instead of each app's own banner. Off by default; a theme can set "uniform_tiles": true. -->
     <bool name="uniform_tiles">false</bool>

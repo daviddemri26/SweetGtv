@@ -1,5 +1,31 @@
 # App library
 
+## Only chosen apps on Home
+
+Set `"selected_apps_only": true` in a theme, or enable the matching boolean in
+`config.xml`, to show only packages from `dock_apps`, `library_apps`, and the apps
+the owner has added from the library. Keep `"app_library": true` so all other
+launchable apps remain accessible. The switch is off by default and never
+uninstalls an app or changes its data.
+
+Newly installed apps stay in the library until added to Home. A saved Remove
+from Home choice still takes precedence over the dock or theme defaults. A
+package in `hidden_apps` remains hidden unless the owner or `library_apps`
+explicitly adds it, as before. Turning the switch off restores the normal TV-app
+list while retaining saved additions and removals.
+
+For an icon that opens every app, use `library_button: true`,
+`show_library_pill: false`, `library_ok_opens: true`, and
+`app_library_selection: false`. OK then opens an app; hold OK to add or remove
+its Home shortcut. With `tile_menu: true`, Home tiles also offer Remove from
+Home when OK is held. These choices persist across restarts and updates.
+
+`columns` controls the width of each row, not the number of selected apps.
+Eight selected apps with four columns occupy two rows; the first four form the
+dock. `fill_dock: false` prevents other selected apps from filling unused dock
+slots automatically. Keep only the intended first-row favorites in `dock_apps`
+and put additional Home defaults in `library_apps`.
+
 ## Optional selection mode
 
 Set `"app_library_selection": true` along with `"app_library": true` in a theme,

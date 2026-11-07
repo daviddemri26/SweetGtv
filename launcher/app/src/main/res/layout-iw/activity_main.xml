@@ -386,6 +386,16 @@
             </LinearLayout>
         </RelativeLayout>
 
+        <!-- Optional personal Continue watching row; its add-on owns data and artwork access. -->
+        <FrameLayout
+            android:id="@+id/continueRowHost"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:visibility="gone" />
+
         <!-- The wrapper clips at the grid's edge; the grid itself must not clip so scaled tiles can overflow their cells. -->
         <FrameLayout
             android:layout_width="match_parent"

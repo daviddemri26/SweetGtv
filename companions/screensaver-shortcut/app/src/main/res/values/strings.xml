@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Screensaver</string>
+    <string name="choose_start_now">The direct shortcut is unavailable. Choose “Start now” in Settings.</string>
+    <string name="open_ambient_settings">Open System, then Ambient Mode, to start your screensaver.</string>
+    <string name="unavailable">Unable to start the screensaver on this device.</string>
+</resources>

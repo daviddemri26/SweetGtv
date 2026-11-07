@@ -102,6 +102,14 @@ final class LibraryApps {
         return !removedFromHome && (explicitlyAdded || (tvApp && !themeHidden));
     }
 
+    /** Selected-only Home leaves newly installed TV apps in the library. A configured dock shortcut also
+     *  selects an ordinary Android app, but neither kind of default overrides an owner's removal. */
+    static boolean visible(boolean tvApp, boolean themeHidden, boolean explicitlyAdded, boolean removedFromHome,
+                           boolean selectedOnly, boolean dockApp) {
+        return visible(tvApp || (selectedOnly && dockApp), themeHidden, explicitlyAdded, removedFromHome)
+                && (!selectedOnly || dockApp || explicitlyAdded);
+    }
+
     /** The pill after the last Home row: show_library_pill false hides it only while the top-bar button is a way in. */
     static boolean showPill(boolean library, boolean button, boolean pill) {
         return library && (pill || !button);

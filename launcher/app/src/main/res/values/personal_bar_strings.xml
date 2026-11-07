@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The personal English home uses these descriptions without visible button labels. -->
+    <string name="personal_bar_settings" translatable="false">Settings</string>
+    <string name="personal_bar_all_apps" translatable="false">All apps</string>
+    <string name="personal_bar_screensaver" translatable="false">Screensaver</string>
+    <string name="personal_bar_wifi" translatable="false">Wi-Fi</string>
+    <string name="personal_bar_bluetooth" translatable="false">Bluetooth</string>
+    <string name="personal_bar_stock_home" translatable="false">Google TV home</string>
+    <string name="personal_bar_stock_home_unavailable" translatable="false">The original home is unavailable right now.</string>
+    <string name="personal_bar_ethernet" translatable="false">Ethernet</string>
+    <string name="personal_bar_connected" translatable="false">Connected</string>
+    <string name="personal_bar_offline" translatable="false">Offline</string>
+    <string name="personal_bar_no_internet" translatable="false">No internet access</string>
+    <string name="personal_bar_network_description" translatable="false">%1$s, %2$s</string>
+</resources>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="spotify_shortcut" translatable="false">Spotify music controls. Press Up from the top bar to open.</string>
+    <string name="spotify_unavailable" translatable="false">The music panel is unavailable. Please install the Spotify widget companion.</string>
+</resources>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The personal home and its existing utility controls use English. -->
+    <string name="spotify_name" translatable="false">Spotify</string>
+    <string name="spotify_shortcut" translatable="false">Spotify music controls. Press Up from the top bar to open.</string>
+    <string name="spotify_previous" translatable="false">Previous track</string>
+    <string name="spotify_next" translatable="false">Next track</string>
+    <string name="spotify_play" translatable="false">Play</string>
+    <string name="spotify_pause" translatable="false">Pause</string>
+    <string name="spotify_open" translatable="false">Open Spotify</string>
+    <string name="spotify_missing" translatable="false">Spotify is not installed on this TV.</string>
+    <string name="spotify_no_session" translatable="false">Start a song in Spotify once to control it here.</string>
+    <string name="spotify_playing" translatable="false">Playing · Back to close</string>
+    <string name="spotify_paused" translatable="false">Paused · Back to close</string>
+    <string name="spotify_ready" translatable="false">Ready on this TV · Back to close</string>
+    <string name="spotify_loading" translatable="false">Loading · Back to close</string>
+    <string name="spotify_close_hint" translatable="false">Arrows to browse · Back to close</string>
+    <string name="spotify_browse" translatable="false">Browse Spotify</string>
+    <string name="spotify_library_loading" translatable="false">Loading your Spotify library…</string>
+    <string name="spotify_library_empty" translatable="false">Spotify has no items to show here yet.</string>
+    <string name="spotify_library_unavailable" translatable="false">Spotify’s library is unavailable. Open Spotify and try again.</string>
+    <string name="spotify_library_back" translatable="false">Up one level</string>
+    <string name="spotify_library_playlists" translatable="false">Playlists</string>
+    <string name="spotify_library_recent" translatable="false">Recent listening</string>
+    <string name="spotify_library_synced" translatable="false">Library synced %1$s</string>
+    <string name="spotify_unavailable" translatable="false">Spotify is unavailable. Open the app and try again.</string>
+    <string name="spotify_connect" translatable="false">Connect Spotify</string>
+    <string name="spotify_connect_hint" translatable="false">Connect Spotify to load playlists, recent tracks and saved episodes to resume.</string>
+    <string name="spotify_finish_sign_in" translatable="false">Finish the Spotify sign-in in the setup window on your computer. Your playlists, recent tracks and saved episodes will then update automatically here.</string>
+    <string name="spotify_refresh" translatable="false">Refresh</string>
+    <string name="spotify_live" translatable="false">Live Spotify</string>
+    <string name="spotify_empty_recent" translatable="false">No recent tracks to show.</string>
+    <string name="spotify_empty_playlists" translatable="false">No playlists to show.</string>
+    <string name="spotify_empty_resume" translatable="false">No saved episodes to resume.</string>
+    <string name="spotify_loading_library" translatable="false">Updating Spotify…</string>
+    <string name="spotify_updated" translatable="false">Updated %1$s</string>
+    <string name="spotify_cached" translatable="false">Offline · last updated %1$s</string>
+    <string name="spotify_choose_device" translatable="false">Choose device</string>
+    <string name="spotify_devices_title" translatable="false">Play on</string>
+    <string name="spotify_devices_hint" translatable="false">Move current playback to a device. Paused playback stays paused.</string>
+    <string name="spotify_devices_footer" translatable="false">Open Spotify on the device to make it available. Back to close.</string>
+    <string name="spotify_devices_loading" translatable="false">Finding available devices…</string>
+    <string name="spotify_devices_empty" translatable="false">No available devices. Open Spotify on your TV, phone or tablet, then refresh.</string>
+    <string name="spotify_device_active" translatable="false">Currently active</string>
+    <string name="spotify_device_restricted" translatable="false">Playback unavailable</string>
+    <string name="spotify_device_selected" translatable="false">Selected for playback</string>
+    <string name="spotify_seek_hint" translatable="false">Playback position. Left or right to preview; press OK to seek.</string>
+    <string name="spotify_seek_position" translatable="false">Position %1$s of %2$s. Left or right to preview; press OK to seek.</string>
+    <string name="spotify_seek_pending" translatable="false">Playing %1$s. Proposed %2$s of %3$s. Press OK to seek; move focus away to cancel.</string>
+</resources>

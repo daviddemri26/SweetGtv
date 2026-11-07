@@ -186,6 +186,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     private final boolean singleRow;
     /** config always_show_names: the alpha of an unfocused tile's name (0 hides it). */
     private final float restNameAlpha;
+    private final boolean hideHomeAppNames;
     /** cinematic_home: only then does a launch record the last-opened app the shelf uses. */
     private final boolean cinematic;
     /** Dock order (config.xml dock_apps, or a theme's config.json). */
@@ -198,6 +199,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     private final Set<String> hidden;
     /** Apps pre-seeded into the App library's "added" set (config.xml library_apps); empty by default. */
     private final Set<String> libraryPreload;
+    /** Installed apps are opt-in Home shortcuts when selected_apps_only is set. */
+    private final boolean selectedAppsOnly;
     private final boolean animations;
     private final boolean advancedEffects;
     private final boolean showLibrary;
@@ -228,6 +231,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         this.fillDock = cfg.fillDock;
         this.hidden = new HashSet<>(cfg.hiddenApps);
         this.libraryPreload = new HashSet<>(cfg.libraryApps);
+        this.selectedAppsOnly = cfg.selectedAppsOnly;
         this.animations = cfg.animations;
         this.advancedEffects = cfg.animations && cfg.advancedEffects;
         this.showHomeSettings = cfg.showHomeSettingsShortcut;
@@ -239,6 +243,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         this.dockRow = cfg.dockRow;
         this.singleRow = cfg.singleRow;
         this.restNameAlpha = cfg.alwaysShowNames ? 0.75f : 0f;
+        this.hideHomeAppNames = cfg.hideHomeAppNames;
         this.cinematic = cfg.cinematicHome;
         this.launchActions = cfg.launchActions;
         this.iconTiles = new HashSet<>(Arrays.asList(ctx.getResources().getStringArray(R.array.icon_tiles)));
@@ -267,11 +272,16 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         Set<String> added = new HashSet<>(LibraryApps.load(ctx));
         added.addAll(libraryPreload);
         Set<String> removed = LibraryApps.loadRemoved(ctx);
-        if (!added.isEmpty()) {
+        Set<String> selected = added;
+        if (selectedAppsOnly) {
+            selected = new HashSet<>(added);
+            selected.addAll(favourites);
+        }
+        if (!selected.isEmpty()) {
             Set<String> seen = new HashSet<>(tvPackages);
             for (ResolveInfo ri : pm.queryIntentActivities(
                     new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0)) {
-                if (ri.activityInfo != null && added.contains(ri.activityInfo.packageName)
+                if (ri.activityInfo != null && selected.contains(ri.activityInfo.packageName)
                         && seen.add(ri.activityInfo.packageName)) found.add(ri);
             }
         }
@@ -285,7 +295,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             if (ri.activityInfo == null) continue;
             String pkg = ri.activityInfo.packageName;
             if (pkg.equals(ctx.getPackageName()) || !ri.activityInfo.exported
-                    || !LibraryApps.visible(tvPackages.contains(pkg), hidden.contains(pkg), added.contains(pkg), removed.contains(pkg))) continue;
+                    || !LibraryApps.visible(tvPackages.contains(pkg), hidden.contains(pkg), added.contains(pkg),
+                    removed.contains(pkg), selectedAppsOnly, favourites.contains(pkg))) continue;
             ComponentName component = new ComponentName(pkg, ri.activityInfo.name);
             Cards.Card card = cardByPkg.get(pkg);
             if (card != null && !card.component.equals(component)) continue;   // the card stands in for this tile
@@ -475,7 +486,8 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         // The dock has no labels, unless always_show_names asks for them (DockDecoration then makes room in the band).
         // In a single row every tile is the dock's kind: the big title above names it.
         boolean dockKind = dockRow && (singleRow || position < dockSize);
-        h.name.setVisibility(dockKind && restNameAlpha == 0f ? View.INVISIBLE : View.VISIBLE);
+        // Keep caption space for the existing zoom and row rhythm; focus cannot reveal a hidden name.
+        h.name.setVisibility(hideHomeAppNames || dockKind && restNameAlpha == 0f ? View.INVISIBLE : View.VISIBLE);
         boolean focused = h.card.isFocused();   // a rebind after reload() can hit the focused tile
         h.name.setAlpha(focused ? 1f : restNameAlpha);
         h.card.setScaleX(focused && animations ? focusScale() : 1f);
@@ -674,9 +686,14 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         if (position < 0 || position >= items.size()) return 0xFF444444;
         Entry e = items.get(position);
         if (e.ambient == 0) {
-            e.ambient = uniformTiles && e.banner == null ? dominantColor(e.icon) : vividColor(e.banner != null ? e.banner : e.icon);
+            e.ambient = artworkColor(e.banner != null ? e.banner : e.icon, uniformTiles && e.banner == null);
         }
         return e.ambient;
+    }
+
+    /** Shared artwork sampling for app tiles, the library and continuation posters. */
+    static int artworkColor(Drawable artwork, boolean dominant) {
+        return dominant ? dominantColor(artwork) : vividColor(artwork);
     }
 
     /** Share of the tile height the icon takes in uniform_tiles mode (onCreateViewHolder). */

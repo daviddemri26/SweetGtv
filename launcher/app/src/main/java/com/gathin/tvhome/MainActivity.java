@@ -29,6 +29,7 @@ import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.media.AudioManager;
 import android.media.tv.TvContract;
 import android.media.tv.TvInputInfo;
 import android.media.tv.TvInputManager;
@@ -138,6 +139,23 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     private AppAdapter adapter;
     private RecyclerView grid;
+    private ContinueRow continueRow, youtubeRow;
+    private View lastTopButton;
+    private FrameLayout libraryTopSlot;
+    private HomeScrollView homeScroll;
+    private FrameLayout contentPages;
+    private AppLibraryPage libraryPage;
+    private Config pageConfig;
+    private boolean fluidHome, libraryPageVisible;
+    private int pageTransition;
+    private boolean pageTransitionRunning;
+    private static final long PAGE_FADE_MS = 700, PAGE_BLANK_MS = 90;
+    private BluetoothStatus bluetoothStatus;
+    private View bluetoothTopButton;
+    private VolumeDrawer volumeDrawer;
+    private SpotifyShortcut spotifyShortcut;
+    private int volumeReturnOrigin, volumeReturnPosition;
+
     private FrameLayout root;
     private WallpaperPlayer wallpaperPlayer;
     private GlassView glass;
@@ -359,6 +377,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (!tileRefresh.onPackagesChanged()) return;
             reloadApps(false);
             if (appLibrary != null) appLibrary.refresh();
+            if (libraryPage != null) libraryPage.refresh();
         }
     };
     // Right after boot the clock is often wrong until network time arrives; don't wait a minute to catch up.
@@ -518,12 +537,18 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         moduleCards = cfg.moduleCards;
         hiddenApps = new HashSet<>(cfg.hiddenApps);
 
+        fluidHome = cfg.fluidHome && !singleRow;
+        pageConfig = cfg;
         grid = findViewById(R.id.grid);
         rtlAppGrid = getResources().getBoolean(R.bool.rtl_app_grid);
         // Mirror only the app grid; the header and other locales keep their own layouts.
         // single_row: one span laid out sideways, so the same adapter, glass and dock band serve a scrolling row.
         grid.setLayoutManager(new GridLayoutManager(this, singleRow ? 1 : COLUMNS,
                 singleRow ? RecyclerView.HORIZONTAL : RecyclerView.VERTICAL, false) {
+            @Override public boolean canScrollVertically() {
+                return !fluidHome && super.canScrollVertically();
+            }
+
             @Override
             protected boolean isLayoutRTL() {
                 return rtlAppGrid;
@@ -542,6 +567,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             public boolean requestChildRectangleOnScreen(@NonNull RecyclerView parent, @NonNull View child,
                                                          @NonNull Rect rect, boolean immediate,
                                                          boolean focusedChildVisible) {
+                if (fluidHome) return false;
                 if (singleRow) {
                     // Sideways: scroll just enough to bring the tile's cell inside the padding. Cells are a
                     // column wide, so the row moves a whole tile at a time and the tiles stay on the columns.
@@ -577,7 +603,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         ((GridLayoutManager) grid.getLayoutManager()).setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
             @Override public int getSpanSize(int position) { return !singleRow && adapter != null && adapter.isLibraryAt(position) ? COLUMNS : 1; }
         });
-        grid.setHasFixedSize(true);
+        grid.setHasFixedSize(!fluidHome);
+        if (fluidHome) grid.setNestedScrollingEnabled(false);
         grid.setItemAnimator(null);
         // Tiles that scroll out while one is carried come back from the view cache without a rebind; set their
         // dimming again whenever one attaches, so none stays dim after the drop.
@@ -626,6 +653,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (MainActivity.this.dockRow && cfg.dockTitle && rowsBelowDock > 0) want = Math.max(want, (int) (AppAdapter.TITLE_ROOM_DP * density));
             // No dock to push down: the grid starts at the top, with room for the first row's zoom and glass.
             if (!MainActivity.this.dockRow) want = (int) (AppAdapter.TOP_ROOM_DP * density);
+            if (cfg.homeContinueRow) want = (int) (AppAdapter.TOP_ROOM_DP * density);
             // A single row never shows the names under its tiles (the title above the row names the app), so the
             // 7dp gap and 22dp label item_app.xml keeps for them would only lift the row: sit it that much lower.
             if (singleRow && !cfg.alwaysShowNames) want += (int) (29 * density);
@@ -737,6 +765,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             libraryFromTopBar = true;   // closing it goes back to this button, not to the pill after the last row
         });
         btnLibraryTop.setVisibility(cfg.libraryButton && cfg.appLibrary ? View.VISIBLE : View.GONE);
+        personalIconBar = cfg.personalIconBar;
         addTopBarApps(cfg.topBarApps, cfg.launchActions);
         iconOnlyButtons = cfg.iconOnlyButtons;
         topMenu = cfg.topMenu;
@@ -777,23 +806,34 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             showSettingsMenu();
             return true;
         });
+        if (personalIconBar) {
+            configurePersonalIconBar();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !cfg.stockHomeRedirect.isEmpty()) {
+                addStockHomeButton();
+            }
+        }
 
-        // Keep focus on the top bar at its ends and at the top: Android's focus finder would otherwise
-        // jump to a tile far below when there is nothing in that direction.
-        boolean rtlMenuBar = getResources().getBoolean(R.bool.rtl_menu_bar);
+        // The personal header wraps horizontally and remembers its last control. Other layouts keep
+        // their existing edge guard so Android cannot jump into unrelated content.
         View.OnKeyListener pillKeys = (v, keyCode, event) -> {
             if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP) return true;
             if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                if (personalIconBar) lastTopButton = v;
+                if (pageTransitionRunning) return true;
+                if (libraryPageVisible) { libraryPage.focusLast(); return true; }
+                if (!reordering && focusContinueRow()) return true;
                 // Back to the dock tile Up came from, not wherever the focus finder lands.
-                focusTile(singleRow ? lastFocused : lastFocused % COLUMNS);
+                if (adapter.appCount() > 0) focusTile(singleRow ? lastFocused : lastFocused % COLUMNS);
+                else focusYoutubeRow();
                 return true;
             }
-            int firstButton = btnInputs.getVisibility() == View.VISIBLE ? R.id.btnInputs : firstTopButton().getId();
-            int leftButton = rtlMenuBar ? R.id.btnSettings : firstButton;
-            int rightButton = rtlMenuBar ? firstButton : R.id.btnSettings;
-            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) return v.getId() == leftButton;
-            return keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && v.getId() == rightButton;
+            if (personalIconBar && (keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT)) {
+                focusAdjacentTopButton(v, keyCode == KeyEvent.KEYCODE_DPAD_LEFT);
+                return true;
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) return v == topBarEdge(true);
+            return keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && v == topBarEdge(false);
         };
         btnInputs.setOnKeyListener(pillKeys);
         btnWifi.setOnKeyListener(pillKeys);
@@ -811,12 +851,61 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                         .setDuration(reducedMotion ? Motion.REDUCED_MS : 160).start());
             }
         }
+        if (personalIconBar && animations && !reducedMotion) {
+            ViewGroup bar = findViewById(R.id.topButtons);
+            for (int i = 0; i < bar.getChildCount(); i++) softenHeaderStates(bar.getChildAt(i));
+        }
         if (festive) applyFestiveSkin((TextView) btnInputs, (TextView) btnSettings);
+
+        if (cfg.homeContinueRow) {
+            continueRow = new ContinueRow(this, cfg,
+                    this::focusTopButton, () -> {
+                        if (adapter.appCount() > 0) focusTile(0);
+                        else if (!focusYoutubeRow()) focusTopButton();
+                    });
+            if (ambientGlow) continueRow.setOnAmbientColorChanged(this::showArtworkGlow);
+            FrameLayout rowHost = findViewById(R.id.continueRowHost);
+            rowHost.addView(continueRow.view(), new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            rowHost.setVisibility(View.VISIBLE);
+        }
+
+        if (fluidHome && cfg.homeYoutubeRow) {
+            youtubeRow = ContinueRow.youtube(this, cfg, () -> {
+                if (adapter.appCount() > 0) onLibraryUp();
+                else if (!focusContinueRow()) focusTopButton();
+            }, () -> { });
+            if (ambientGlow) youtubeRow.setOnAmbientColorChanged(this::showArtworkGlow);
+        }
+        if (fluidHome) configureFluidHome();
+        if (cfg.volumeDrawer) {
+            volumeDrawer = new VolumeDrawer(root, animations, reducedMotion, this::adjustDrawerVolume);
+            volumeDrawer.setRestoreFallback(this::restoreVolumeOrigin);
+            volumeDrawer.setShortcutOpener(() -> {
+                if (!drawerShortcutEligible()) return;
+                rememberVolumeOrigin();
+                volumeDrawer.open(getCurrentFocus());
+                restartIdleClock();
+            });
+        }
+        if (cfg.spotifyDrawer) {
+            spotifyShortcut = new SpotifyShortcut(root, () -> {
+                if (!drawerShortcutEligible() || volumeDrawerOpen()) return;
+                stopDrawerOriginScroll();
+                spotifyShortcut.open();
+                restartIdleClock();
+            }, animations, reducedMotion);
+        }
 
         // Hide the glass when focus leaves the tiles.
         getWindow().getDecorView().getViewTreeObserver().addOnGlobalFocusChangeListener((oldF, newF) -> {
+            if (personalIconBar && newF != null && newF.getParent() == findViewById(R.id.topButtons)) {
+                lastTopButton = newF;
+            }
             boolean onTile = newF != null && newF.getId() == R.id.card;
             if (!onTile) hideGlass();
+            if (continueRow != null && continueRow.view().hasFocus()
+                    || youtubeRow != null && youtubeRow.view().hasFocus()) hideHero();
         });
 
         packageFilter.addAction(Intent.ACTION_PACKAGE_ADDED);
@@ -911,9 +1000,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        if (volumeDrawer != null) volumeDrawer.dismiss(false, false);
+        if (spotifyShortcut != null) spotifyShortcut.clear();
         if (openLauncherSettingsIfAsked(intent)) return;
         if (openInputsIfAsked(intent)) return;
         if (intent == null || !intent.hasCategory(Intent.CATEGORY_HOME)) return;
+        if (libraryPageVisible) closeLibraryPage(false);
+        if (homeScroll != null) homeScroll.reset();
         grid.scrollToPosition(0);
         lastFocused = 0;
         lastFocusedKey = adapter.getItemCount() > 0 ? adapter.keyAt(0) : null;
@@ -956,7 +1049,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             return;
         }
         restartIdleClock();
+        if (bluetoothStatus != null) bluetoothStatus.resume();
+        if (spotifyShortcut != null) spotifyShortcut.resume();
         promptsPaused = false;
+        if (continueRow != null && !libraryPageVisible) continueRow.resume();
+        if (youtubeRow != null && !libraryPageVisible) youtubeRow.resume();
+        if (libraryPageVisible) libraryPage.resume();
         if (grid.getAdapter() == null) grid.setAdapter(adapter);   // dropped by onTrimMemory
         switch (tileRefresh.onResume(packagesChangedSinceRebuild())) {
             case REBUILD:
@@ -1051,7 +1149,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         // Capture the app before rebinding can move focus and overwrite its key.
         final String returnKey = lastFocusedKey;
         final int returnSlot = lastFocused;
-        final boolean restoreFocus = appLibrary == null && (animate || grid.hasFocus());
+        final boolean restoreFocus = !libraryPageVisible && appLibrary == null && (animate || grid.hasFocus());
         if (restoreFocus) {
             glassShown = false;
             glass.setAlpha(0f);
@@ -1062,7 +1160,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             heroArt.setAlpha(0f);
         }
         if (rebuild) reloadTiles();
-        if (animate && entrance && animations && !reducedMotion) {
+        if (!libraryPageVisible && animate && entrance && animations && !reducedMotion) {
             grid.scheduleLayoutAnimation();
             // A rebuild redraws the grid anyway; without one the entrance needs a draw to start.
             if (!rebuild) grid.invalidate();
@@ -1130,6 +1228,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         final String returnKey = lastFocusedKey;
         final int returnSlot = lastFocused;
         grid.post(() -> {
+            if (libraryPageVisible || volumeDrawerOpen() || isDestroyed()) { tilesReady = true; return; }
             int pos = adapter.positionOf(returnKey);
             if (returnToLibrary || libraryFocusPending) focusLibrary();
             else focusTile(pos >= 0 ? pos : returnSlot);
@@ -1154,7 +1253,15 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onPause() {
         super.onPause();
+        if (volumeDrawer != null) volumeDrawer.dismiss(false, false);
+        if (spotifyShortcut != null) spotifyShortcut.pause();
         root.removeCallbacks(showIdleClock);
+        if (bluetoothStatus != null) bluetoothStatus.pause();
+        if (continueRow != null) continueRow.pause();
+        if (youtubeRow != null) youtubeRow.pause();
+        if (homeScroll != null) homeScroll.stop();
+        if (libraryPage != null) libraryPage.pause();
+        settleContentPages();
         endReorder();   // Home or another app while reordering keeps the order so far
         wallpaperPlayer.stop();
         stopAmbientAnimation();
@@ -1207,16 +1314,32 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
+            if (spotifyShortcut != null) spotifyShortcut.restoreFocus();
             startPendingSettingsReorder();
-            if (libraryFocusPending && appLibrary == null) focusLibrary();
+            if (!libraryPageVisible && libraryFocusPending && appLibrary == null) focusLibrary();
             showCardPrompt();
+            // Restored tile focus can precede window focus; finish any backdrop fade cancelled on pause.
+            if (ambientGlow) {
+                if (libraryPageVisible && libraryPage != null) libraryPage.refreshAmbient();
+                else {
+                    if (continueRow != null) continueRow.refreshAmbient();
+                    if (youtubeRow != null) youtubeRow.refreshAmbient();
+                }
+            }
         }
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (volumeDrawer != null) volumeDrawer.destroy();
+        if (spotifyShortcut != null) spotifyShortcut.destroy();
         unregisterReceiver(packageReceiver);
+        if (bluetoothStatus != null) bluetoothStatus.destroy();
+        if (continueRow != null) continueRow.destroy();
+        if (youtubeRow != null) youtubeRow.destroy();
+        if (homeScroll != null) homeScroll.stop();
+        if (libraryPage != null) libraryPage.destroy();
         wallpaperPlayer.close();
         ConnectivityManager cm = getSystemService(ConnectivityManager.class);
         TvInputManager tim = (TvInputManager) getSystemService(TV_INPUT_SERVICE);
@@ -1259,6 +1382,25 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
      */
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        if (spotifyShortcut != null) {
+            boolean eligible = drawerShortcutEligible() && !volumeDrawerOpen()
+                    && ((ViewGroup) findViewById(R.id.topButtons)).hasFocus();
+            if (spotifyShortcut.handleKeyEvent(event, eligible)) {
+                if (event.getAction() == KeyEvent.ACTION_DOWN) restartIdleClock();
+                return true;
+            }
+        }
+        if (volumeDrawer != null) {
+            boolean eligible = volumeOriginEligible();
+            if (!volumeDrawer.isOpen() && eligible && event.getAction() == KeyEvent.ACTION_DOWN
+                    && event.getRepeatCount() == 0 && event.getKeyCode() == KeyEvent.KEYCODE_DPAD_LEFT) {
+                rememberVolumeOrigin();
+            }
+            if (volumeDrawer.handleKeyEvent(event, eligible, getCurrentFocus())) {
+                if (event.getAction() == KeyEvent.ACTION_DOWN) restartIdleClock();
+                return true;
+            }
+        }
         // Vendor keys (TCL Netflix button, 4062) never reach the key services, only the focused window.
         if (event.getKeyCode() >= 1000 && RemoteKeys.handle(this, event, homeAppKeys.get(event.getKeyCode()), null)) return true;
         if (handleSettingsKey(event)) return true;
@@ -1324,6 +1466,59 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         View f = getCurrentFocus();
         if (f == null || f.getId() != R.id.card || !(f.getParent() instanceof View)) return -1;
         return grid.getChildAdapterPosition((View) f.getParent());
+    }
+
+    private boolean volumeDrawerOpen() { return volumeDrawer != null && volumeDrawer.isOpen(); }
+
+    private boolean drawerShortcutEligible() {
+        return hasWindowFocus() && !reordering && !pageTransitionRunning && openPopup == null && cardPrompt == null;
+    }
+
+    private void stopDrawerOriginScroll() {
+        cancelPendingFocusScroll();
+        if (homeScroll != null) homeScroll.stop();
+    }
+
+    private void rememberVolumeOrigin() {
+        volumeReturnOrigin = ((ViewGroup) findViewById(R.id.topButtons)).hasFocus() ? 4
+                : libraryPageVisible ? 2 : youtubeRow != null && youtubeRow.view().hasFocus() ? 3
+                : continueRow != null && continueRow.view().hasFocus() ? 1 : 0;
+        volumeReturnPosition = focusedTilePosition();
+        stopDrawerOriginScroll();
+    }
+
+    private boolean volumeOriginEligible() {
+        if (!drawerShortcutEligible()) return false;
+        if (libraryPageVisible) return libraryPage != null && libraryPage.isFirstColumnFocused();
+        if (continueRow != null && continueRow.isFirstItemFocused()) return true;
+        if (youtubeRow != null && youtubeRow.isFirstItemFocused()) return true;
+        int position = focusedTilePosition();
+        if (position < 0 || position >= adapter.appCount()) return false;
+        if (singleRow) return position == 0;
+        int rowCount = position < COLUMNS ? Math.min(adapter.appCount(), adapter.dockFilled()) : adapter.appCount();
+        return GridNavigation.atHorizontalEdge(position, rowCount, COLUMNS, rtlAppGrid, true);
+    }
+
+    private void restoreVolumeOrigin() {
+        if (volumeReturnOrigin == 4) { focusTopButton(); return; }
+        if (libraryPageVisible && libraryPage != null) { libraryPage.focusLast(); return; }
+        if (volumeReturnOrigin == 1 && continueRow != null && continueRow.focusLast()) return;
+        if (volumeReturnOrigin == 3 && youtubeRow != null && youtubeRow.focusEntry()) return;
+        focusTile(Math.max(0, volumeReturnPosition));
+    }
+
+    private void adjustDrawerVolume(int direction) {
+        AudioManager audio = getSystemService(AudioManager.class);
+        try {
+            if (audio == null || audio.isVolumeFixed()) {
+                Toast.makeText(this, "Volume is unavailable for this output.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            // Android owns HDMI/Bluetooth routing and safe-volume policy. No route or system setting is changed.
+            audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, AudioManager.FLAG_SHOW_UI);
+        } catch (RuntimeException unavailable) {
+            Toast.makeText(this, "Volume is unavailable for this output.", Toast.LENGTH_SHORT).show();
+        }
     }
 
     /** The reorder button: turns the mode on (focus goes back to the last tile), or off again. */
@@ -1588,13 +1783,234 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     @Override
     public void onBackPressed() {
+        if (volumeDrawerOpen()) { volumeDrawer.dismiss(true, true); return; }
+        if (libraryPageVisible) {
+            if (!libraryPage.dismissActions()) closeLibraryPage(true);
+            return;
+        }
         // Home screen: Back goes nowhere.
+    }
+
+    /** Keep the header fixed while every Home row shares one vertical viewport. */
+    private void configureFluidHome() {
+        FrameLayout rowHost = findViewById(R.id.continueRowHost);
+        ViewGroup gridWrapper = (ViewGroup) grid.getParent();
+        LinearLayout column = (LinearLayout) rowHost.getParent();
+        int index = column.indexOfChild(rowHost);
+        column.removeView(rowHost);
+        column.removeView(gridWrapper);
+        contentPages = new FrameLayout(this);
+        // Let spring highlights use both existing gutters while retaining vertical header clipping.
+        // Page margins preserve tile positions, widths and each poster row's right-hand cutoff.
+        int leftGutter = column.getPaddingLeft();
+        int rightGutter = column.getPaddingRight();
+        LinearLayout.LayoutParams viewportParams = new LinearLayout.LayoutParams(-1, 0, 1f);
+        viewportParams.leftMargin = -leftGutter;
+        viewportParams.rightMargin = -rightGutter;
+        column.addView(contentPages, index, viewportParams);
+        homeScroll = new HomeScrollView(this, animations, reducedMotion);
+        FrameLayout.LayoutParams homeParams = new FrameLayout.LayoutParams(-1, -1);
+        homeParams.leftMargin = leftGutter;
+        homeParams.rightMargin = rightGutter;
+        contentPages.addView(homeScroll, homeParams);
+        LinearLayout rows = new LinearLayout(this);
+        rows.setOrientation(LinearLayout.VERTICAL);
+        rows.setClipChildren(false);
+        rows.setClipToPadding(false);
+        homeScroll.addView(rows, new android.widget.ScrollView.LayoutParams(-1, -2));
+        rows.addView(rowHost);
+        LinearLayout.LayoutParams gridParams = new LinearLayout.LayoutParams(-1, -2);
+        gridParams.topMargin = Math.round(10 * density);
+        rows.addView(gridWrapper, gridParams);
+        if (youtubeRow != null) {
+            LinearLayout.LayoutParams youtubeParams = new LinearLayout.LayoutParams(-1, -2);
+            youtubeParams.topMargin = Math.round(12 * density);
+            youtubeParams.bottomMargin = Math.round(12 * density);
+            rows.addView(youtubeRow.view(), youtubeParams);
+        }
+        gridWrapper.setClipChildren(false);
+        gridWrapper.setClipToPadding(false);
+        ViewGroup.LayoutParams gridSize = grid.getLayoutParams();
+        gridSize.height = ViewGroup.LayoutParams.WRAP_CONTENT;
+        grid.setLayoutParams(gridSize);
+        // The app highlight lives inside the same viewport, so it cannot paint over the fixed header.
+        ((ViewGroup) glass.getParent()).removeView(glass);
+        contentPages.addView(glass);
+        if (continueRow != null) continueRow.attachGlass(contentPages);
+        if (youtubeRow != null) youtubeRow.attachGlass(contentPages);
+        homeScroll.setOnScrollChangeListener((v, x, y, oldX, oldY) -> {
+            int dy = y - oldY;
+            if (continueRow != null) continueRow.onViewportScroll(dy);
+            if (youtubeRow != null) youtubeRow.onViewportScroll(dy);
+            if (!glassShown) return;
+            glassTargetY -= dy;
+            glassScrollShift -= dy;
+            glass.setTranslationY(glass.getTranslationY() - dy);
+        });
+        if (continueRow != null) continueRow.setOnFocusChanged(() -> {
+            homeScroll.reveal(continueRow.view());
+            hideGlass();
+        });
+        if (youtubeRow != null) youtubeRow.setOnFocusChanged(() -> {
+            homeScroll.reveal(youtubeRow.view());
+            hideGlass();
+            hideHero();
+        });
+    }
+
+    private void openLibraryPage() {
+        if (libraryPageVisible) {
+            if (!pageTransitionRunning) libraryPage.focusLast();
+            return;
+        }
+        endReorder();
+        cancelPendingFocusScroll();
+        libraryFocusPending = false;
+        if (openPopup != null) openPopup.dismiss();
+        if (homeScroll != null) homeScroll.stop();
+        if (continueRow != null) continueRow.pause();
+        if (youtubeRow != null) youtubeRow.pause();
+        hideGlass();
+        hideHero();
+        if (libraryPage == null) {
+            libraryPage = new AppLibraryPage(this, pageConfig, adapter::containsPackage,
+                    () -> reloadApps(false), this::focusTopButton);
+            if (ambientGlow) libraryPage.setOnAmbientColorChanged(this::showArtworkGlow);
+            FrameLayout.LayoutParams pageParams = new FrameLayout.LayoutParams(-1, -1);
+            pageParams.leftMargin = ((FrameLayout.LayoutParams) homeScroll.getLayoutParams()).leftMargin;
+            pageParams.rightMargin = ((FrameLayout.LayoutParams) homeScroll.getLayoutParams()).rightMargin;
+            libraryPage.view().setVisibility(View.INVISIBLE);
+            contentPages.addView(libraryPage.view(), pageParams);
+            libraryPage.attachGlass(contentPages);
+            libraryPage.view().animate().setUpdateListener(animation ->
+                    libraryPage.setPageAlpha(libraryPage.view().getAlpha()));
+            if (libraryTopSlot != null) {
+                TextView count = libraryPage.countView();
+                count.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+                count.setTextColor(0xCCFFFFFF);
+                count.setGravity(Gravity.CENTER);
+                FrameLayout.LayoutParams caption = new FrameLayout.LayoutParams(
+                        Math.round(120 * density), Math.round(16 * density), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+                caption.topMargin = Math.round(46 * density);
+                libraryTopSlot.addView(count, caption);
+            } else {
+                android.widget.RelativeLayout header = (android.widget.RelativeLayout) findViewById(R.id.topButtons).getParent();
+                android.widget.RelativeLayout.LayoutParams countParams = new android.widget.RelativeLayout.LayoutParams(-2, -2);
+                countParams.addRule(android.widget.RelativeLayout.ALIGN_PARENT_TOP);
+                countParams.addRule(android.widget.RelativeLayout.ALIGN_PARENT_END);
+                header.addView(libraryPage.countView(), countParams);
+            }
+        }
+        libraryPageVisible = true;
+        btnLibraryTop.setActivated(true);
+        btnLibraryTop.setSelected(true);
+        libraryPage.countView().setVisibility(View.VISIBLE);
+        libraryPage.resume();
+        transitionContent(homeScroll, libraryPage.view());
+    }
+
+    private void closeLibraryPage(boolean animate) {
+        if (!libraryPageVisible) return;
+        libraryPageVisible = false;
+        btnLibraryTop.setActivated(false);
+        btnLibraryTop.setSelected(false);
+        libraryPage.countView().setVisibility(View.INVISIBLE);
+        libraryPage.pause();
+        if (continueRow != null) continueRow.resume();
+        if (youtubeRow != null) youtubeRow.resume();
+        if (animate) transitionContent(libraryPage.view(), homeScroll);
+        else settleContentPages();
+        btnLibraryTop.requestFocus();
+    }
+
+    /** Fade out, leave the content empty, then fade in. Only one page is ever painted. */
+    private void transitionContent(View outgoing, View incoming) {
+        final int token = ++pageTransition;
+        outgoing.animate().cancel();
+        incoming.animate().cancel();
+        outgoing.animate().setStartDelay(0);
+        incoming.animate().setStartDelay(0);
+        pageTransitionRunning = true;
+        ((ViewGroup) outgoing).setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+        ((ViewGroup) incoming).setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+        btnLibraryTop.requestFocus();
+        if (!animations || reducedMotion) { finishContentTransition(token); return; }
+
+        // A quick Back can request the page which is still fading out. Bring that same page
+        // back from its current opacity instead of flashing it or revealing the hidden page.
+        if (incoming.getVisibility() == View.VISIBLE && incoming.getAlpha() > 0f) {
+            outgoing.setAlpha(0f);
+            outgoing.setVisibility(View.INVISIBLE);
+            fadeContentIn(incoming, token, 0);
+            return;
+        }
+        incoming.setAlpha(0f);
+        incoming.setVisibility(View.INVISIBLE);
+        if (libraryPage != null) libraryPage.setPageAlpha(
+                libraryPage.view().getVisibility() == View.VISIBLE ? libraryPage.view().getAlpha() : 0f);
+        if (outgoing.getVisibility() != View.VISIBLE || outgoing.getAlpha() <= 0f) {
+            outgoing.setVisibility(View.INVISIBLE);
+            fadeContentIn(incoming, token, PAGE_BLANK_MS);
+            return;
+        }
+        outgoing.animate().alpha(0f).setDuration(Math.round(PAGE_FADE_MS * outgoing.getAlpha()))
+                .setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator())
+                .withLayer().withEndAction(() -> {
+                    if (token != pageTransition) return;
+                    outgoing.setVisibility(View.INVISIBLE);
+                    fadeContentIn(incoming, token, PAGE_BLANK_MS);
+                }).start();
+    }
+
+    private void fadeContentIn(View incoming, int token, long delay) {
+        if (token != pageTransition) return;
+        incoming.setVisibility(View.VISIBLE);
+        incoming.bringToFront();
+        if (incoming == homeScroll) glass.bringToFront();
+        if (libraryPage != null) libraryPage.setPageAlpha(
+                libraryPage.view().getVisibility() == View.VISIBLE ? libraryPage.view().getAlpha() : 0f);
+        incoming.animate().alpha(1f).setStartDelay(delay)
+                .setDuration(Math.round(PAGE_FADE_MS * (1f - incoming.getAlpha())))
+                .setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator())
+                .withLayer().withEndAction(() -> finishContentTransition(token)).start();
+    }
+
+    private void finishContentTransition(int token) {
+        if (token != pageTransition) return;
+        settleContentPages();
+        // Keep header navigation responsive; do not steal focus if the user moved to another icon.
+        if (libraryPageVisible && hasWindowFocus() && getCurrentFocus() == btnLibraryTop) libraryPage.focusLast();
+    }
+
+    private void settleContentPages() {
+        if (homeScroll == null) return;
+        pageTransition++;
+        pageTransitionRunning = false;
+        homeScroll.animate().cancel();
+        homeScroll.animate().setStartDelay(0);
+        homeScroll.setAlpha(1f);
+        homeScroll.setTranslationX(0f);
+        homeScroll.setVisibility(libraryPageVisible ? View.INVISIBLE : View.VISIBLE);
+        homeScroll.setDescendantFocusability(libraryPageVisible
+                ? ViewGroup.FOCUS_BLOCK_DESCENDANTS : ViewGroup.FOCUS_AFTER_DESCENDANTS);
+        if (libraryPage != null) {
+            View page = libraryPage.view();
+            page.animate().cancel();
+            page.animate().setStartDelay(0);
+            page.setAlpha(1f);
+            libraryPage.setPageAlpha(libraryPageVisible ? 1f : 0f);
+            page.setTranslationX(0f);
+            page.setVisibility(libraryPageVisible ? View.VISIBLE : View.INVISIBLE);
+            ((ViewGroup) page).setDescendantFocusability(libraryPageVisible
+                    ? ViewGroup.FOCUS_AFTER_DESCENDANTS : ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+        }
     }
 
     // ---- glass highlight -------------------------------------------------------------------------
 
     @Override
     public void onLibraryRequested() {
+        if (fluidHome) { openLibraryPage(); return; }
         if (appLibrary != null) appLibrary.close();
         if (openPopup != null) openPopup.dismiss();
         libraryFocusPending = false;
@@ -1639,7 +2055,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         // Tile rect in root coordinates, using layout positions (ignores the scale animation).
         Rect r = tileRect;
         r.set(0, 0, card.getWidth(), card.getHeight());
-        root.offsetDescendantRectToMyCoords(card, r);
+        (contentPages != null ? contentPages : root).offsetDescendantRectToMyCoords(card, r);
         float pad = 6f * density;        // matches GlassView's glow inset
         float scale = adapter.focusScale();
         float w = card.getWidth() * scale + 2 * pad;
@@ -1684,6 +2100,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             springY.animateToFinalPosition(y - glassScrollShift);
         }
         View item = (View) card.getParent();
+        if (homeScroll != null) {
+            showGlowOnly(position);
+            if (youtubeRow != null) homeScroll.revealFromTop(item);
+            else homeScroll.reveal(item);
+            return;
+        }
         if (dockRow && (singleRow || position < COLUMNS)) {
             // Dock: park it at the bottom of the screen and show the top shelf for this app. In a single row
             // every tile is in the dock's row, which never scrolls vertically.
@@ -2002,7 +2424,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
      * name above the dock does not show (every grid tile has its name underneath).
      */
     private void showGlowOnly(int position) {
-        int color = adapter.ambientColorAt(position);
+        showArtworkGlow(adapter.ambientColorAt(position));
+    }
+
+    /** Keep the same backdrop transition whichever content surface owns the focused artwork. */
+    private void showArtworkGlow(int color) {
         stopAmbientAnimation();
         hero.animate().cancel();
         ambient.animate().cancel();
@@ -2244,15 +2670,41 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     // ---- navigation ------------------------------------------------------------------------------
 
+    private boolean focusContinueRow() {
+        if (continueRow == null || !continueRow.hasEntries()) return false;
+        cancelPendingFocusScroll();
+        libraryFocusPending = false;
+        if (!continueRow.focusLast()) return false;
+        hideGlass();
+        hideHero();
+        return true;
+    }
+
+    private boolean focusYoutubeRow() {
+        if (youtubeRow == null) return false;
+        cancelPendingFocusScroll();
+        libraryFocusPending = false;
+        if (!youtubeRow.focusEntry()) return false;
+        hideGlass();
+        hideHero();
+        return true;
+    }
+
     @Override
     public boolean onTileVerticalKey(int position, int keyCode) {
+        if ((continueRow != null || personalIconBar) && keyCode == KeyEvent.KEYCODE_DPAD_UP
+                && (singleRow || position < COLUMNS)) {
+            if (reordering) return true;
+            if (!focusContinueRow()) focusTopButton();
+            return true;
+        }
         int count = adapter.appCount();
         int target;
         if (singleRow) {
             // One row: Up leaves for the top bar, Down has nowhere to go, and Left/Right walk the whole row,
             // stopping at its two ends (the default focus search scrolls the row to the next tile).
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP) return false;
-            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) return true;
+            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) { if (!reordering) focusYoutubeRow(); return true; }
             boolean forward = rtlAppGrid ? keyCode == KeyEvent.KEYCODE_DPAD_LEFT : keyCode == KeyEvent.KEYCODE_DPAD_RIGHT;
             int last = adapter.focusablePosition(count - 1);
             if (forward && position >= last) {
@@ -2280,6 +2732,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         } else {
             int lastRowStart = ((count - 1) / COLUMNS) * COLUMNS;
             if (position >= lastRowStart) {
+                if (!reordering && focusYoutubeRow()) return true;
                 if (adapter.isLibraryAt(count)) focusLibrary();
                 return true;
             }
@@ -2320,18 +2773,182 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         clockColumn.addView(column, clockColumn.indexOfChild(clockRow) + 1, lp);
     }
 
-    /** The first top-bar button after Inputs that is shown, in bar order (top_bar_apps, the network pill, ...); Settings is always there. */
+    /** Return to the last header control used, even after travelling through the content rows. */
+    private void focusTopButton() {
+        ViewGroup bar = findViewById(R.id.topButtons);
+        View target = personalIconBar && lastTopButton != null && lastTopButton.getParent() == bar
+                && lastTopButton.getVisibility() == View.VISIBLE && lastTopButton.isFocusable()
+                && lastTopButton.isEnabled() ? lastTopButton : firstTopButton();
+        target.requestFocus();
+    }
+
+    private void focusAdjacentTopButton(View current, boolean left) {
+        ViewGroup bar = findViewById(R.id.topButtons);
+        List<View> controls = new ArrayList<>();
+        for (int i = 0; i < bar.getChildCount(); i++) {
+            View button = bar.getChildAt(i);
+            if (button.getVisibility() == View.VISIBLE && button.isFocusable() && button.isEnabled()) controls.add(button);
+        }
+        int next = TopBarNavigation.next(controls.indexOf(current), controls.size(), left);
+        if (next >= 0 && controls.get(next).requestFocus()) current.playSoundEffect(left
+                ? SoundEffectConstants.NAVIGATION_LEFT : SoundEffectConstants.NAVIGATION_RIGHT);
+    }
+
+    /** The first available button other than Inputs, in the current child order. */
     private View firstTopButton() {
         ViewGroup bar = findViewById(R.id.topButtons);
         for (int i = 0; i < bar.getChildCount(); i++) {
             View button = bar.getChildAt(i);
-            if (button != btnInputs && button.getVisibility() == View.VISIBLE) return button;
+            if (button != btnInputs && button.getVisibility() == View.VISIBLE && button.isFocusable()) return button;
         }
         return findViewById(R.id.btnSettings);
     }
 
+    /** Reordering or a hidden pill must not make a middle button behave like a row edge. */
+    private View topBarEdge(boolean left) {
+        ViewGroup bar = findViewById(R.id.topButtons);
+        boolean fromStart = left != (bar.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL);
+        for (int n = 0; n < bar.getChildCount(); n++) {
+            int index = fromStart ? n : bar.getChildCount() - 1 - n;
+            View button = bar.getChildAt(index);
+            if (button.getVisibility() == View.VISIBLE && button.isFocusable()) return button;
+        }
+        return findViewById(R.id.btnSettings);
+    }
+
+    /** Personal controls retain the normal pill focus/navigation behavior. */
+    private void configurePersonalIconBar() {
+        ViewGroup bar = findViewById(R.id.topButtons);
+        View settings = findViewById(R.id.btnSettings);
+        wrapLibraryTopButton(bar);
+        addBluetoothButton(bar);
+        List<View> ordered = new ArrayList<>(Arrays.asList(settings, btnLibraryTop));
+        if (screensaverTopButton != null) ordered.add(screensaverTopButton);
+        ordered.add(bluetoothTopButton);
+        ordered.add(btnWifi);
+        // Keep other configured controls after these, with their existing visibility.
+        bar.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        for (int index = 0; index < ordered.size(); index++) {
+            View button = ordered.get(index);
+            bar.removeView(button);
+            bar.addView(button, index);
+        }
+        settings.setContentDescription(getString(R.string.personal_bar_settings));
+        btnLibraryTop.setContentDescription(getString(R.string.personal_bar_all_apps));
+        btnWifi.setContentDescription(getString(R.string.personal_bar_wifi));
+    }
+
+    /** Give All apps the same caption slot as Bluetooth, without increasing the header height. */
+    private void wrapLibraryTopButton(ViewGroup bar) {
+        View icon = btnLibraryTop;
+        int index = bar.indexOfChild(icon);
+        ViewGroup.LayoutParams oldParams = icon.getLayoutParams();
+        bar.removeView(icon);
+        FrameLayout slot = new FrameLayout(this);
+        slot.setId(icon.getId());
+        icon.setId(View.NO_ID);
+        slot.setLayoutParams(oldParams);
+        slot.setVisibility(icon.getVisibility());
+        slot.setFocusable(true);
+        slot.setClickable(true);
+        slot.setClipChildren(false);
+        slot.setClipToPadding(false);
+        slot.setContentDescription(icon.getContentDescription());
+        slot.setOnClickListener(v -> icon.performClick());
+        icon.setFocusable(false);
+        icon.setClickable(false);
+        icon.setDuplicateParentStateEnabled(true);
+        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        icon.setBackgroundResource(R.drawable.pill_bg_library);
+        slot.addView(icon, new FrameLayout.LayoutParams(-1, -1));
+        bar.addView(slot, index);
+        libraryTopSlot = slot;
+        btnLibraryTop = slot;
+    }
+
+    /** A tiny cross-fade of the pill surface, limited to these header instances. */
+    private void softenHeaderStates(View view) {
+        Drawable background = view.getBackground();
+        if (background instanceof android.graphics.drawable.StateListDrawable) {
+            android.graphics.drawable.StateListDrawable states =
+                    (android.graphics.drawable.StateListDrawable) background.mutate();
+            states.setEnterFadeDuration(100);
+            states.setExitFadeDuration(100);
+        }
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) softenHeaderStates(group.getChildAt(i));
+        }
+    }
+
+    /** A normal 42dp circular button with a quiet, non-focusable audio-route caption below it. */
+    private void addBluetoothButton(ViewGroup bar) {
+        FrameLayout button = new FrameLayout(this);
+        button.setId(View.generateViewId());
+        button.setFocusable(true);
+        button.setClickable(true);
+        button.setClipChildren(false);
+        button.setClipToPadding(false);
+        LinearLayout.LayoutParams slot = new LinearLayout.LayoutParams(
+                Math.round(42 * density), Math.round(42 * density));
+        slot.setMarginStart(Math.round(10 * density));
+        button.setLayoutParams(slot);
+        TextView icon = (TextView) getLayoutInflater().inflate(R.layout.top_app_button, bar, false);
+        icon.setFocusable(false);
+        icon.setClickable(false);
+        icon.setDuplicateParentStateEnabled(true);
+        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        icon.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_bluetooth_pill, 0, 0, 0);
+        ColorStateList defaultIconTint = icon.getCompoundDrawableTintList();
+        button.addView(icon, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        TextView label = new TextView(this);
+        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        label.setTextColor(0xCCFFFFFF);
+        label.setGravity(Gravity.CENTER);
+        label.setSingleLine(true);
+        label.setEllipsize(TextUtils.TruncateAt.END);
+        label.setIncludeFontPadding(false);
+        label.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        FrameLayout.LayoutParams caption = new FrameLayout.LayoutParams(
+                Math.round(120 * density), Math.round(16 * density), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        caption.topMargin = Math.round(46 * density);
+        button.addView(label, caption);
+        button.setOnClickListener(v -> open(SystemSettings.bluetoothIntent(this)));
+        bar.addView(button);
+        bluetoothTopButton = button;
+        topAppButtons.add(button);
+        bluetoothStatus = new BluetoothStatus(this, state -> {
+            label.setText(state.label);
+            button.setContentDescription(getString(R.string.personal_bar_bluetooth)
+                    + (state.label.isEmpty() ? "" : ", " + state.label));
+            // Match the other icons until Bluetooth is the selected media output.
+            // A darker blue remains readable on the white focused pill.
+            icon.setCompoundDrawableTintList(state.bluetoothAudioSelected ? new ColorStateList(
+                    new int[][]{new int[]{android.R.attr.state_focused}, new int[]{}},
+                    new int[]{0xFF075CA8, 0xFF83C6FF}) : defaultIconTint);
+        });
+    }
+
+    /** Visit the original home without changing Android's Home resolver or the usual redirection. */
+    private void addStockHomeButton() {
+        ViewGroup bar = findViewById(R.id.topButtons);
+        TextView button = (TextView) getLayoutInflater().inflate(R.layout.top_app_button, bar, false);
+        button.setId(View.generateViewId());
+        button.setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_stock_home_pill, 0, 0, 0);
+        button.setContentDescription(getString(R.string.personal_bar_stock_home));
+        button.setOnClickListener(v -> {
+            if (!HomeKeyService.openStockHome(this)) {
+                Toast.makeText(this, R.string.personal_bar_stock_home_unavailable, Toast.LENGTH_SHORT).show();
+            }
+        });
+        bar.addView(button);
+        topAppButtons.add(button);
+    }
+
     /** top_bar_apps buttons, in bar order. */
     private final List<View> topAppButtons = new ArrayList<>();
+    private View screensaverTopButton;
 
     /**
      * Puts each top_bar_apps app in the top bar as a round pill with the app's own logo, left of the network pill.
@@ -2359,13 +2976,20 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             } catch (PackageManager.NameNotFoundException e) {
                 continue;
             }
+            boolean screensaver = "com.daviddemri.tv.screensaver".equals(pkg);
+            if (personalIconBar && screensaver) {
+                logo = getDrawable(R.drawable.ic_screensaver_pill);
+                label = getString(R.string.personal_bar_screensaver);
+            }
             TextView button = (TextView) getLayoutInflater().inflate(R.layout.top_app_button, bar, false);
-            // pillKeys finds the bar's ends by id: without one of its own, every app button would be an end.
+            // Each configured app button keeps a stable view identity for focus and accessibility.
             button.setId(View.generateViewId());
             logo.setBounds(0, 0, size, size);
             button.setCompoundDrawablesRelative(logo, null, null, null);
-            button.setCompoundDrawableTintList(null);
+            // Keep the pill style's stateful white/dark tint for the monochrome shortcut.
+            if (!(personalIconBar && screensaver)) button.setCompoundDrawableTintList(null);
             button.setContentDescription(label);
+            if (screensaver) screensaverTopButton = button;
             Intent target = launch;
             button.setOnClickListener(v -> open(new Intent(target)));
             // After the network pill and the VPN pill; the Hebrew bar runs the other way, so before both there.
@@ -2427,6 +3051,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     }
 
     private void focusTile(int position) {
+        if (libraryPageVisible || volumeDrawerOpen()) return;
         libraryFocusPending = false;
         cancelPendingFocusScroll();
         if (adapter.appCount() == 0) {
@@ -2441,6 +3066,15 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             // Already focused (e.g. back from an app): no focus change fires, so restore the glass by hand.
             if (card.isFocused()) onTileFocused(pos, card);
             else card.requestFocus();
+            return;
+        }
+        // The unified viewport owns scrolling; all its Home cells are laid out together.
+        if (homeScroll != null) {
+            grid.post(() -> {
+                if (libraryPageVisible || volumeDrawerOpen() || isDestroyed()) return;
+                RecyclerView.ViewHolder holder = grid.findViewHolderForAdapterPosition(pos);
+                if (holder != null) holder.itemView.findViewById(R.id.card).requestFocus();
+            });
             return;
         }
         // Not laid out yet: scroll there, then focus once the scroll settles.
@@ -2684,7 +3318,15 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             btnWifi.setText(text);
         }
         if (wifiIconOnly) {
-            btnWifi.setContentDescription(btnWifi.getText());
+            if (personalIconBar) {
+                String connection = getString(icon == R.drawable.ic_ethernet
+                        ? R.string.personal_bar_ethernet : R.string.personal_bar_wifi);
+                String state = getString(!online ? R.string.personal_bar_offline
+                        : validated ? R.string.personal_bar_connected : R.string.personal_bar_no_internet);
+                btnWifi.setContentDescription(getString(R.string.personal_bar_network_description, connection, state));
+            } else {
+                btnWifi.setContentDescription(btnWifi.getText());
+            }
             btnWifi.setText(null);
         }
         if (festive && diya != null) {
@@ -2707,6 +3349,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     /** config.xml icon_only_buttons. */
     private boolean iconOnlyButtons;
+    /** Personal presentation only: top-bar order, English descriptions and Screensaver icon. */
+    private boolean personalIconBar;
     /** config.xml top_menu: Inputs, Wi-Fi and Settings folded into one gear. */
     private boolean topMenu;
     /** show_inputs_pill as configured: top_menu clears showInputsPill, so its Inputs row reads this. */
@@ -3409,7 +4053,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
      * the next one follows as soon as this one is answered. Nothing is shown until the owner says Show.
      */
     private void showCardPrompt() {
-        if (!moduleCards || !tilesReady || promptsPaused || cardPrompt != null || !hasWindowFocus() || isFinishing()
+        if (libraryPageVisible || volumeDrawerOpen() || !moduleCards || !tilesReady || promptsPaused || cardPrompt != null || !hasWindowFocus() || isFinishing()
                 || reordering) return;
         if (cards.isEmpty() || !CardFeature.working()) return;
         CardFeature.run(() -> {

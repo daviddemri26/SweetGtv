@@ -62,6 +62,12 @@ final class Config {
     final List<String> hiddenApps;
     /** Packages pre-seeded into the App library's "added" set (config.xml, library_apps); empty by default. */
     final List<String> libraryApps;
+    /** Home contains only configured or user-added shortcuts; other installed apps stay in the library. */
+    final boolean selectedAppsOnly;
+    /** Personal opt-in Continue watching row, supplied by a separate local add-on. */
+    final boolean homeContinueRow;
+    /** Optional YouTube content shelf below Home apps; separate from Continue watching. */
+    final boolean homeYoutubeRow;
     final String liveTvPackage;
     final String liveTvAction;
     final String liveTvInputId;
@@ -115,6 +121,8 @@ final class Config {
     final boolean launcherSettingsButton;
     /** Names under every tile, dimmed until focused (config.xml always_show_names); the dock band grows for them. */
     final boolean alwaysShowNames;
+    /** Hide captions under Home app tiles only; Continue and All apps keep their labels. */
+    final boolean hideHomeAppNames;
     /** Reorder button in the top bar (config.xml reorder_button); the Settings long-press menu offers it either way. */
     final boolean reorderButton;
     /** Show the Wi-Fi/Ethernet pill in the top bar (config.xml, show_network_pill). */
@@ -123,6 +131,14 @@ final class Config {
     final boolean showInputsPill;
     /** Wi-Fi and Settings pills as round icon buttons, Inputs keeps its label (config.xml icon_only_buttons). */
     final boolean iconOnlyButtons;
+    /** Personal top-bar order and monochrome Screensaver shortcut (personal_icon_bar). */
+    final boolean personalIconBar;
+    /** Personal home: one vertical viewport and a full content page for All apps. */
+    final boolean fluidHome;
+    /** Left-edge two-button media-volume drawer; disabled unless the theme enables it. */
+    final boolean volumeDrawer;
+    /** Spotify media controls above the header; opt-in and event-driven. */
+    final boolean spotifyDrawer;
     /** The Inputs pill as a round icon button too (config.xml icon_only_inputs). */
     final boolean iconOnlyInputs;
     /** App library as a round button in the top bar (config.xml library_button); needs app_library. */
@@ -259,12 +275,12 @@ final class Config {
     /** With single_row, the band runs behind every app in the row, not only the dock apps (config.xml, dock_band_all). */
     final boolean dockBandAll;
 
-    private Config(List<String> dockApps, boolean fillDock, List<String> hiddenApps, List<String> libraryApps, String liveTvPackage,
+    private Config(List<String> dockApps, boolean fillDock, List<String> hiddenApps, List<String> libraryApps, boolean selectedAppsOnly, boolean homeContinueRow, boolean homeYoutubeRow, String liveTvPackage,
                    String liveTvAction, String liveTvInputId, Map<String, String> launchActions, Map<String, String> appLabels,
                    Map<String, String> appBanners, String sourcePanelService, String sourcePanelAction,
                    String sourcePanelExtra, boolean coocaaSources, String inputAction, List<String> inputSources,
                    String inputUriScheme, int columns, int rowsBelowDock, boolean animations, boolean advancedEffects,
-                   boolean shamsiDate, String greetingName, boolean moduleCards, boolean reducedMotion, boolean bootToLiveTv, boolean openOnStartChoice, boolean dockTitle, boolean dockRow, boolean topMenu, boolean launcherSettingsButton, boolean reorderButton, boolean showNetworkPill, boolean showInputsPill, boolean iconOnlyButtons, boolean iconOnlyInputs, boolean libraryButton, boolean showLibraryPill, int wifiLabelWidth, boolean alwaysShowNames, boolean wallpaperTrueColor, boolean focusOvershoot, String vpnApp,
+                   boolean shamsiDate, String greetingName, boolean moduleCards, boolean reducedMotion, boolean bootToLiveTv, boolean openOnStartChoice, boolean dockTitle, boolean dockRow, boolean topMenu, boolean launcherSettingsButton, boolean reorderButton, boolean showNetworkPill, boolean showInputsPill, boolean iconOnlyButtons, boolean personalIconBar, boolean fluidHome, boolean volumeDrawer, boolean spotifyDrawer, boolean iconOnlyInputs, boolean libraryButton, boolean showLibraryPill, int wifiLabelWidth, boolean alwaysShowNames, boolean hideHomeAppNames, boolean wallpaperTrueColor, boolean focusOvershoot, String vpnApp,
                    boolean showHomeSettingsShortcut, boolean showStats, boolean appLibrary, boolean appLibrarySelection, boolean libraryOkOpens, boolean uniformTiles, int backgroundColor, int skyIntensity,
                    int[] settingsKeycodes, boolean settingsKeyPanel, boolean restoreKeyServices, boolean wallpaperEnabled, File wallpaper, List<File> wallpapers,
                    int wallpaperRotationMinutes, int wallpaperDim, int dockOpacity, String wallpaperOrder, boolean overlayApplied,
@@ -283,6 +299,9 @@ final class Config {
         this.fillDock = fillDock;
         this.hiddenApps = Collections.unmodifiableList(hiddenApps);
         this.libraryApps = Collections.unmodifiableList(libraryApps);
+        this.selectedAppsOnly = selectedAppsOnly;
+        this.homeContinueRow = homeContinueRow;
+        this.homeYoutubeRow = homeYoutubeRow;
         this.liveTvPackage = liveTvPackage;
         this.liveTvAction = liveTvAction;
         this.liveTvInputId = liveTvInputId;
@@ -319,11 +338,16 @@ final class Config {
         this.showNetworkPill = showNetworkPill;
         this.showInputsPill = showInputsPill;
         this.iconOnlyButtons = iconOnlyButtons;
+        this.personalIconBar = personalIconBar;
+        this.fluidHome = fluidHome;
+        this.volumeDrawer = volumeDrawer;
+        this.spotifyDrawer = spotifyDrawer;
         this.iconOnlyInputs = iconOnlyInputs;
         this.libraryButton = libraryButton;
         this.showLibraryPill = showLibraryPill;
         this.wifiLabelWidth = wifiLabelWidth;
         this.alwaysShowNames = alwaysShowNames;
+        this.hideHomeAppNames = hideHomeAppNames;
         this.wallpaperTrueColor = wallpaperTrueColor;
         this.focusOvershoot = focusOvershoot;
         this.vpnApp = vpnApp;
@@ -406,6 +430,9 @@ final class Config {
         boolean fillDock = res.getBoolean(R.bool.fill_dock);
         List<String> hidden = new ArrayList<>(Arrays.asList(res.getStringArray(R.array.hidden_apps)));
         List<String> libraryApps = new ArrayList<>(Arrays.asList(res.getStringArray(R.array.library_apps)));
+        boolean selectedAppsOnly = res.getBoolean(R.bool.selected_apps_only);
+        boolean homeContinueRow = res.getBoolean(R.bool.home_continue_row);
+        boolean homeYoutubeRow = res.getBoolean(R.bool.home_youtube_row);
         String liveTv = res.getString(R.string.live_tv_package).trim();
         String liveTvAction = res.getString(R.string.live_tv_action).trim();
         String liveTvInputId = res.getString(R.string.live_tv_input_id).trim();
@@ -439,11 +466,16 @@ final class Config {
         boolean showNetworkPill = res.getBoolean(R.bool.show_network_pill);
         boolean showInputsPill = res.getBoolean(R.bool.show_inputs_pill);
         boolean iconOnlyButtons = res.getBoolean(R.bool.icon_only_buttons);
+        boolean personalIconBar = res.getBoolean(R.bool.personal_icon_bar);
+        boolean fluidHome = res.getBoolean(R.bool.fluid_home);
+        boolean volumeDrawer = res.getBoolean(R.bool.volume_drawer);
+        boolean spotifyDrawer = res.getBoolean(R.bool.spotify_drawer);
         boolean iconOnlyInputs = res.getBoolean(R.bool.icon_only_inputs);
         boolean libraryButton = res.getBoolean(R.bool.library_button);
         boolean showLibraryPill = res.getBoolean(R.bool.show_library_pill);
         int wifiLabelWidth = res.getInteger(R.integer.wifi_label_width);
         boolean alwaysShowNames = res.getBoolean(R.bool.always_show_names);
+        boolean hideHomeAppNames = res.getBoolean(R.bool.hide_home_app_names);
         boolean wallpaperTrueColor = res.getBoolean(R.bool.wallpaper_true_color);
         boolean focusOvershoot = res.getBoolean(R.bool.focus_overshoot);
         boolean wallpaperCaptions = res.getBoolean(R.bool.wallpaper_captions);
@@ -511,6 +543,9 @@ final class Config {
             fillDock = bool(json, "fill_dock", fillDock);
             hidden = stringList(json, "hidden_apps", hidden);
             libraryApps = stringList(json, "library_apps", libraryApps);
+            selectedAppsOnly = bool(json, "selected_apps_only", selectedAppsOnly);
+            homeContinueRow = bool(json, "home_continue_row", homeContinueRow);
+            homeYoutubeRow = bool(json, "home_youtube_row", homeYoutubeRow);
             liveTv = string(json, "live_tv_package", liveTv);
             liveTvAction = string(json, "live_tv_action", liveTvAction);
             liveTvInputId = string(json, "live_tv_input_id", liveTvInputId);
@@ -544,11 +579,16 @@ final class Config {
             showNetworkPill = bool(json, "show_network_pill", showNetworkPill);
             showInputsPill = bool(json, "show_inputs_pill", showInputsPill);
             iconOnlyButtons = bool(json, "icon_only_buttons", iconOnlyButtons);
+            personalIconBar = bool(json, "personal_icon_bar", personalIconBar);
+            fluidHome = bool(json, "fluid_home", fluidHome);
+            volumeDrawer = bool(json, "volume_drawer", volumeDrawer);
+            spotifyDrawer = bool(json, "spotify_drawer", spotifyDrawer);
             iconOnlyInputs = bool(json, "icon_only_inputs", iconOnlyInputs);
             libraryButton = bool(json, "library_button", libraryButton);
             showLibraryPill = bool(json, "show_library_pill", showLibraryPill);
             wifiLabelWidth = integer(json, "wifi_label_width", wifiLabelWidth, 0, 300);
             alwaysShowNames = bool(json, "always_show_names", alwaysShowNames);
+            hideHomeAppNames = bool(json, "hide_home_app_names", hideHomeAppNames);
             wallpaperTrueColor = bool(json, "wallpaper_true_color", wallpaperTrueColor);
             focusOvershoot = bool(json, "focus_overshoot", focusOvershoot);
             wallpaperCaptions = bool(json, "wallpaper_captions", wallpaperCaptions);
@@ -652,11 +692,11 @@ final class Config {
         Festival festival = json == null ? Festival.NONE : Festival.parse(string(json, "festival", ""),
                 string(json, "festival_until", ""), string(json, "greeting", ""), string(json, "accent_color", ""));
 
-        return new Config(dock, fillDock, hidden, libraryApps, liveTv, liveTvAction, liveTvInputId, packageMap(launchActions), packageMap(appLabels),
+        return new Config(dock, fillDock, hidden, libraryApps, selectedAppsOnly, homeContinueRow, homeYoutubeRow, liveTv, liveTvAction, liveTvInputId, packageMap(launchActions), packageMap(appLabels),
                 packageMap(appBanners), panelService, panelAction, panelExtra, coocaaSources, inputAction, inputSources, inputUriScheme, Math.max(1, columns),
                 Math.max(0, rowsBelow), animations, advancedEffects, shamsi, greetingName, moduleCards, reducedMotion, bootToLiveTv,
                 openOnStartChoice, dockTitle, dockRow, topMenu, launcherSettingsButton, reorderButton, showNetworkPill, showInputsPill,
-                iconOnlyButtons, iconOnlyInputs, libraryButton, showLibraryPill, wifiLabelWidth, alwaysShowNames, wallpaperTrueColor, focusOvershoot,
+                iconOnlyButtons, personalIconBar, fluidHome, volumeDrawer, spotifyDrawer, iconOnlyInputs, libraryButton, showLibraryPill, wifiLabelWidth, alwaysShowNames, hideHomeAppNames, wallpaperTrueColor, focusOvershoot,
                 vpn, homeSettings, showStats, library, librarySelection, libraryOkOpens, uniformTiles, background,
                 Math.max(0, Math.min(100, skyIntensity)), settingsKeycodes, settingsKeyPanel, restoreKeyServices, wallpaperEnabled, wallpaper,
                 wallpapers, rotationMinutes, wallpaperDim, dockOpacity, wallpaperOrder, applied, festival, inputKeycodes, appKeys, stockHomeRedirect,

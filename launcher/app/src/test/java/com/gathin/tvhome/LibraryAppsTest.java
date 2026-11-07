@@ -101,6 +101,39 @@ public class LibraryAppsTest {
         assertTrue(LibraryApps.visible(true, false, false, false));
     }
 
+    @Test public void selectedHomeDoesNotAutomaticallyShowNewTvApps() {
+        assertFalse(LibraryApps.visible(true, false, false, false, true, false));
+        assertTrue(LibraryApps.visible(true, false, false, false, false, false));
+    }
+
+    @Test public void selectedHomeShowsDockAndLibraryChoicesIncludingPhoneApps() {
+        assertTrue(LibraryApps.visible(true, false, false, false, true, true));
+        assertTrue(LibraryApps.visible(false, false, false, false, true, true));
+        assertTrue(LibraryApps.visible(true, false, true, false, true, false));
+        assertTrue(LibraryApps.visible(false, false, true, false, true, false));
+    }
+
+    @Test public void ownerRemovalWinsOverEverySelectedHomeDefault() {
+        assertFalse(LibraryApps.visible(true, false, false, true, true, true));
+        assertFalse(LibraryApps.visible(true, false, true, true, true, false));
+        assertFalse(LibraryApps.visible(false, false, true, true, true, true));
+    }
+
+    @Test public void selectedHomeKeepsThemeHidingUnlessTheOwnerExplicitlyAddsTheApp() {
+        assertFalse(LibraryApps.visible(true, true, false, false, true, true));
+        assertTrue(LibraryApps.visible(true, true, true, false, true, false));
+    }
+
+    @Test public void switchingSelectedHomeOffPreservesEveryExistingVisibilityRule() {
+        for (boolean tv : new boolean[]{false, true})
+            for (boolean hidden : new boolean[]{false, true})
+                for (boolean added : new boolean[]{false, true})
+                    for (boolean removed : new boolean[]{false, true})
+                        for (boolean dock : new boolean[]{false, true})
+                            assertEquals(LibraryApps.visible(tv, hidden, added, removed),
+                                    LibraryApps.visible(tv, hidden, added, removed, false, dock));
+    }
+
     @Test public void addingAdvancesPastCheckedAppsToTheNextMissingShortcut() {
         assertEquals(3, LibraryApps.nextFocus(1, 5, index -> index == 3 || index == 4));
         assertEquals(0, LibraryApps.nextFocus(4, 5, index -> index == 0 || index == 2));
